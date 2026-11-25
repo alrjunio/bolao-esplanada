@@ -162,7 +162,7 @@ def save_own(update:Update,uid=Depends(session)):
         for value in (d,bet):
             if value is not None:
                 if not isinstance(value,dict) or not isinstance(value.get('rows'),list) or len(value['rows'])>200: raise HTTPException(422,'Aposta inválida')
-                validate_bet(value, strict=value is bet)
+                validate_bet(value, strict=value is bet, check_party=value is bet and value != (json.loads(old_b) if old_b else None))
                 value['nick']=nick
         g=g or {}
         for new, previous in ((d,old_d),(bet,old_b)):
@@ -191,14 +191,14 @@ def integer(v,low=0):
     try: return not isinstance(v,bool) and float(v)==int(float(v)) and low<=int(float(v))<=10000
     except (TypeError,ValueError,OverflowError): return False
 
-def validate_bet(b,strict=False):
+def validate_bet(b,strict=False,check_party=True):
     if strict and not integer(b.get('total'),1): raise HTTPException(422,'Total inválido')
     names=[]
     for r in b['rows']:
         if not isinstance(r,dict) or any(not isinstance(r.get(k,''),str) or len(r.get(k,''))>500 for k in ('n','a','origin','person','party','status')): raise HTTPException(422,'Registro inválido')
         if r.get('a') not in ('Manter','Criar','Extinguir','Fundir','Dividir','Renomear',''): raise HTTPException(422,'Ação inválida')
         if r.get('status','') not in ('','Permanece','Novo titular'): raise HTTPException(422,'Situação inválida')
-        if r.get('party') and norm(r['party']) not in {norm(x) for x in PARTIES}: raise HTTPException(422,'Selecione um partido da lista')
+        if check_party and r.get('party') and norm(r['party']) not in {norm(x) for x in PARTIES}: raise HTTPException(422,'Selecione um partido da lista')
         names.append(norm(r.get('n')))
     if strict and (not names or '' in names or len(set(names))!=len(names) or any(not r.get('a') for r in b['rows'])): raise HTTPException(422,'Pastas inválidas ou duplicadas')
     e=b.get('extras',{})
