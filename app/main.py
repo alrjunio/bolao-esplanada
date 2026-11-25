@@ -280,6 +280,56 @@ def lock_pasta(body:dict):
         audit(c,'lock_pasta',{'names':names});c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
     return {'revision':rev+1,'state':g}
 
+def backup_game():
+    folder=DB.parent/'backups'; folder.mkdir(mode=0o700,exist_ok=True)
+    dest=folder/f'pre-controle-{int(time.time())}-{secrets.token_hex(4)}.sqlite3'
+    with sqlite3.connect(DB) as src, sqlite3.connect(dest) as dst:
+        src.backup(dst)
+        if dst.execute('PRAGMA integrity_check').fetchone()[0]!='ok': raise HTTPException(500,'Backup inválido')
+    dest.chmod(0o600)
+    return dest.name
+
+@app.post('/api/competition-control',dependencies=[Depends(admin)])
+def competition_control(body:dict):
+    action=body.get('action')
+    if body.get('confirm')!='REINICIAR' and action in ('reset','annul'): raise HTTPException(422,'Confirmação necessária')
+    with connect() as c:
+        c.execute('BEGIN IMMEDIATE'); rev,g=game(c)
+        if not g or body.get('revision')!=rev: raise HTTPException(409,'Recarregue a página')
+        if action=='backup': return {'backup':backup_game()}
+        published=g.get('published',[])
+        if action in ('unlock','unlock_all','unlock_extras'):
+            if g.get('locked') or g.get('final'): raise HTTPException(409,'Rodada encerrada; use reinicialização se for teste')
+            if action=='unlock_extras':
+                if published or g.get('publishedExtras'): raise HTTPException(409,'Há resultados publicados; extras permanecem bloqueados')
+                g['extrasLocked']=False
+            else:
+                frozen=set(g.get('lockedPastas',[])); protected={norm(r.get('n')) for r in published}
+                if any(r.get('a') in ('Fundir','Dividir','Renomear') for r in published): protected=frozen.copy()
+                names={norm(body.get('name'))} if action=='unlock' else frozen-protected
+                if names & protected: raise HTTPException(409,'Resultado publicado ou mudança estrutural relacionada')
+                g['lockedPastas']=sorted(frozen-names)
+        elif action=='annul':
+            if g.get('final'): raise HTTPException(409,'Apuração finalizada; use reinicialização apenas para testes')
+            name=norm(body.get('name'))
+            if not any(norm(r.get('n'))==name for r in published): raise HTTPException(404,'Resultado não encontrado')
+            backup_game()
+            g['published']=[r for r in published if norm(r.get('n'))!=name]
+            for r in g.get('official',[]):
+                if norm(r.get('publishedKey'))==name or norm(r.get('n'))==name: r.pop('publishedKey',None)
+            # Anulação não reabre palpites automaticamente.
+        elif action=='reset':
+            backup_game()
+            for k,v in dict(official=[],published=[],publishedExtras={},lockedPastas=[],extrasLocked=False,locked=False,final=False,extras={},players=[]).items(): g[k]=v
+            g['total']=40
+            if body.get('clearBets') is True: c.execute('UPDATE users SET draft=NULL,bet=NULL,revision=revision+1')
+            else: c.execute('UPDATE users SET revision=revision+1')
+        else: raise HTTPException(422,'Ação inválida')
+        if action!='reset': c.execute('UPDATE users SET revision=revision+1')
+        audit(c,'competition_'+action,{'name':body.get('name'),'clearBets':body.get('clearBets') is True})
+        c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
+    return {'revision':rev+1,'state':g}
+
 @app.post('/api/reset-test',dependencies=[Depends(admin)])
 def reset_test(body:dict):
     if body.get('confirm')!='LIMPAR TESTES': raise HTTPException(422,'Confirmação necessária')
@@ -294,38 +344,3 @@ def reset_test(body:dict):
         audit(c,'reset_test',{})
     return {'ok':True}
 
-@app.get('/api/name-review',dependencies=[Depends(admin)])
-def name_review():
-    from difflib import SequenceMatcher
-    with connect() as c:
-        _,g=game(c);g=g or {}; out=[]
-        for o in g.get('published',[]):
-            target=norm(o.get('person')); pasta=norm(o.get('n'))
-            if not target: continue
-            counts={}
-            for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL"):
-                for r in json.loads(raw).get('rows',[]):
-                    name=r.get('person',''); n=norm(name)
-                    if norm(r.get('n'))!=pasta or not n or n==target: continue
-                    counts[name]=counts.get(name,0)+1
-            for name,count in counts.items():
-                ratio=SequenceMatcher(None,norm(name),target).ratio()
-                out.append(dict(pasta=o['n'],official=o['person'],name=name,count=count,similarity=round(ratio*100),approved=norm(name) in o.get('nameAliases',[])))
-        return sorted(out,key=lambda x:-x['similarity'])
-
-@app.post('/api/name-review',dependencies=[Depends(admin)])
-def review_name(body:dict):
-    with connect() as c:
-        c.execute('BEGIN IMMEDIATE');rev,g=game(c)
-        if not g or g.get('final'): raise HTTPException(409,'Apuração finalizada ou indisponível')
-        o=next((r for r in g.get('published',[]) if norm(r.get('n'))==norm(body.get('pasta'))),None)
-        name=norm(body.get('name'))
-        if not o or not name or norm(o.get('person'))!=norm(body.get('official')): raise HTTPException(409,'Resultado mudou. Recarregue')
-        if not any(norm(r.get('n'))==norm(o['n']) and norm(r.get('person'))==name for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL") for r in json.loads(raw).get('rows',[])): raise HTTPException(422,'Nome não encontrado nas apostas')
-        aliases=set(o.get('nameAliases',[]))
-        if body.get('approve') is True: aliases.add(name)
-        else: aliases.discard(name)
-        o['nameAliases']=sorted(aliases)
-        audit(c,'name_review',{'pasta':o['n'],'name':name,'approve':body.get('approve') is True})
-        c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
-    return {'ok':True}
