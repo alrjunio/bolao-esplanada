@@ -344,3 +344,55 @@ def reset_test(body:dict):
         audit(c,'reset_test',{})
     return {'ok':True}
 
+
+@app.get('/api/name-review',dependencies=[Depends(admin)])
+def name_review():
+    from difflib import SequenceMatcher
+    with connect() as c:
+        _,g=game(c);g=g or {}; out=[]
+        for o in g.get('published',[]):
+            target=norm(o.get('person')); pasta=norm(o.get('n'))
+            if not target: continue
+            counts={}
+            for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL"):
+                for r in json.loads(raw).get('rows',[]):
+                    name=r.get('person',''); n=norm(name)
+                    if norm(r.get('n'))!=pasta or not n or n==target: continue
+                    counts[name]=counts.get(name,0)+1
+            for name,count in counts.items():
+                ratio=SequenceMatcher(None,norm(name),target).ratio()
+                out.append(dict(pasta=o['n'],official=o['person'],name=name,count=count,similarity=round(ratio*100),approved=norm(name) in o.get('nameAliases',[])))
+        return sorted(out,key=lambda x:-x['similarity'])
+
+@app.post('/api/name-review',dependencies=[Depends(admin)])
+def review_name(body:dict):
+    with connect() as c:
+        c.execute('BEGIN IMMEDIATE');rev,g=game(c)
+        if not g or g.get('final'): raise HTTPException(409,'Apuração finalizada ou indisponível')
+        o=next((r for r in g.get('published',[]) if norm(r.get('n'))==norm(body.get('pasta'))),None)
+        name=norm(body.get('name'))
+        if not o or not name or norm(o.get('person'))!=norm(body.get('official')): raise HTTPException(409,'Resultado mudou. Recarregue')
+        if not any(norm(r.get('n'))==norm(o['n']) and norm(r.get('person'))==name for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL") for r in json.loads(raw).get('rows',[])): raise HTTPException(422,'Nome não encontrado nas apostas')
+        aliases=set(o.get('nameAliases',[]))
+        if body.get('approve') is True: aliases.add(name)
+        else: aliases.discard(name)
+        o['nameAliases']=sorted(aliases)
+        audit(c,'name_review',{'pasta':o['n'],'name':name,'approve':body.get('approve') is True})
+        c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
+    return {'ok':True}
+
+
+@app.get('/api/custom-ministries',dependencies=[Depends(admin)])
+def custom_ministries():
+    with connect() as c:
+        _,g=game(c); g=g or {}
+        known={norm(n) for n in g.get('reference',[])}
+        official={norm(r.get('n')) for r in g.get('official',[])+g.get('published',[])}
+        locked=set(g.get('lockedPastas',[]))
+        names={}
+        for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL"):
+            for r in json.loads(raw).get('rows',[]):
+                n=r.get('n','').strip(); k=norm(n)
+                if k and k not in known:
+                    names.setdefault(k,n)
+        return [dict(name=names[k],inOfficial=k in official,locked=k in locked) for k in sorted(names)]
