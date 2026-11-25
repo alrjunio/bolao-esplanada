@@ -7,6 +7,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from .scoring import score, norm
+PARTIES = ['AGIR', 'AVANTE', 'CIDADANIA', 'DC', 'DEMOCRATA', 'MDB', 'MISSÃO', 'MOBILIZA', 'NOVO', 'PCB', 'PCdoB', 'PCO', 'PDT', 'PL', 'PODE', 'PP', 'PRD', 'PRTB', 'PSB', 'PSD', 'PSDB', 'PSOL', 'PSTU', 'PT', 'PV', 'REDE', 'REPUBLICANOS', 'SOLIDARIEDADE', 'UNIÃO', 'UP', 'Sem filiação partidária']
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 security = HTTPBasic()
@@ -128,6 +129,8 @@ def write(update:Update):
         c.execute('BEGIN IMMEDIATE'); rev,old=game(c)
         if rev!=update.revision: raise HTTPException(409,'Recarregue a página')
         state=update.state
+        if old and old.get('final'):
+            raise HTTPException(409,'Apuração finalizada')
         if old and old.get('locked') and not state.get('locked'): raise HTTPException(409,'Rodada encerrada não pode ser reaberta')
         for k in ('published','publishedExtras','lockedPastas','extrasLocked'):
             state[k]=(old or {}).get(k, [] if k in ('published','lockedPastas') else False if k=='extrasLocked' else {})
@@ -195,6 +198,7 @@ def validate_bet(b,strict=False):
         if not isinstance(r,dict) or any(not isinstance(r.get(k,''),str) or len(r.get(k,''))>500 for k in ('n','a','origin','person','party','status')): raise HTTPException(422,'Registro inválido')
         if r.get('a') not in ('Manter','Criar','Extinguir','Fundir','Dividir','Renomear',''): raise HTTPException(422,'Ação inválida')
         if r.get('status','') not in ('','Permanece','Novo titular'): raise HTTPException(422,'Situação inválida')
+        if r.get('party') and norm(r['party']) not in {norm(x) for x in PARTIES}: raise HTTPException(422,'Selecione um partido da lista')
         names.append(norm(r.get('n')))
     if strict and (not names or '' in names or len(set(names))!=len(names) or any(not r.get('a') for r in b['rows'])): raise HTTPException(422,'Pastas inválidas ou duplicadas')
     e=b.get('extras',{})
@@ -214,6 +218,9 @@ def manage(uid:int,body:dict):
         c.execute('BEGIN IMMEDIATE')
         if not c.execute('SELECT 1 FROM users WHERE id=?',(uid,)).fetchone(): raise HTTPException(404,'Conta inexistente')
         if action in mapping: c.execute('UPDATE users SET status=? WHERE id=?',(mapping[action],uid))
+        elif action=='purge':
+            if body.get('confirm')!='EXCLUIR' or not c.execute("SELECT 1 FROM users WHERE id=? AND status='deleted'",(uid,)).fetchone(): raise HTTPException(409,'Exclua logicamente primeiro e confirme')
+            c.execute('DELETE FROM users WHERE id=?',(uid,))
         elif action=='password':
             pw=body.get('password','')
             if not isinstance(pw,str) or not 10<=len(pw)<=128: raise HTTPException(422,'Senha de 10 a 128 caracteres')
@@ -237,7 +244,7 @@ def publish(body:dict):
             r=rows[idx].copy();validate_bet({'rows':[r]})
             if not norm(r.get('n')) or not r.get('source','').strip() or not (r.get('structureConfirmed') or any(r.get(k) for k in ('person','party','status'))): raise HTTPException(422,'Informe fonte e pelo menos um campo confirmado')
             g['lockedPastas']=sorted(set(g.get('lockedPastas',[]))|{norm(r['n'])}|{norm(x) for x in body.get('related',[]) if isinstance(x,str) and x.strip()});g['extrasLocked']=True
-            published=g.get('published',[]);oldkey=r.get('publishedKey',norm(r['n']));published=[x for x in published if norm(x['n'])!=oldkey and norm(x['n'])!=norm(r['n'])];published.append(r);g['published']=published;rows[idx]['publishedKey']=norm(r['n'])
+            published=g.get('published',[]); r['nameAliases']=next((x.get('nameAliases',[]) for x in published if norm(x.get('n'))==norm(r['n']) and norm(x.get('person'))==norm(r.get('person'))),[]);oldkey=r.get('publishedKey',norm(r['n']));published=[x for x in published if norm(x['n'])!=oldkey and norm(x['n'])!=norm(r['n'])];published.append(r);g['published']=published;rows[idx]['publishedKey']=norm(r['n'])
         audit(c,'publish',{'index':body.get('index'),'extras':bool(body.get('extras'))});c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
     return {'revision':rev+1,'state':g}
 
@@ -272,3 +279,53 @@ def lock_pasta(body:dict):
         g['extrasLocked']=True
         audit(c,'lock_pasta',{'names':names});c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
     return {'revision':rev+1,'state':g}
+
+@app.post('/api/reset-test',dependencies=[Depends(admin)])
+def reset_test(body:dict):
+    if body.get('confirm')!='LIMPAR TESTES': raise HTTPException(422,'Confirmação necessária')
+    with connect() as c:
+        c.execute('BEGIN IMMEDIATE'); rev,g=game(c)
+        if c.execute("SELECT 1 FROM users WHERE status!='deleted'").fetchone(): raise HTTPException(409,'Exclua as contas de teste primeiro. Não use com participantes reais.')
+        if not g: return {'ok':True}
+        for k,v in dict(official=[],published=[],publishedExtras={},lockedPastas=[],extrasLocked=False,locked=False,final=False,extras={},players=[]).items(): g[k]=v
+        g['total']=40
+        c.execute('UPDATE users SET draft=NULL,bet=NULL,revision=revision+1')
+        c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
+        audit(c,'reset_test',{})
+    return {'ok':True}
+
+@app.get('/api/name-review',dependencies=[Depends(admin)])
+def name_review():
+    from difflib import SequenceMatcher
+    with connect() as c:
+        _,g=game(c);g=g or {}; out=[]
+        for o in g.get('published',[]):
+            target=norm(o.get('person')); pasta=norm(o.get('n'))
+            if not target: continue
+            counts={}
+            for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL"):
+                for r in json.loads(raw).get('rows',[]):
+                    name=r.get('person',''); n=norm(name)
+                    if norm(r.get('n'))!=pasta or not n or n==target: continue
+                    counts[name]=counts.get(name,0)+1
+            for name,count in counts.items():
+                ratio=SequenceMatcher(None,norm(name),target).ratio()
+                out.append(dict(pasta=o['n'],official=o['person'],name=name,count=count,similarity=round(ratio*100),approved=norm(name) in o.get('nameAliases',[])))
+        return sorted(out,key=lambda x:-x['similarity'])
+
+@app.post('/api/name-review',dependencies=[Depends(admin)])
+def review_name(body:dict):
+    with connect() as c:
+        c.execute('BEGIN IMMEDIATE');rev,g=game(c)
+        if not g or g.get('final'): raise HTTPException(409,'Apuração finalizada ou indisponível')
+        o=next((r for r in g.get('published',[]) if norm(r.get('n'))==norm(body.get('pasta'))),None)
+        name=norm(body.get('name'))
+        if not o or not name or norm(o.get('person'))!=norm(body.get('official')): raise HTTPException(409,'Resultado mudou. Recarregue')
+        if not any(norm(r.get('n'))==norm(o['n']) and norm(r.get('person'))==name for (raw,) in c.execute("SELECT bet FROM users WHERE status='active' AND bet IS NOT NULL") for r in json.loads(raw).get('rows',[])): raise HTTPException(422,'Nome não encontrado nas apostas')
+        aliases=set(o.get('nameAliases',[]))
+        if body.get('approve') is True: aliases.add(name)
+        else: aliases.discard(name)
+        o['nameAliases']=sorted(aliases)
+        audit(c,'name_review',{'pasta':o['n'],'name':name,'approve':body.get('approve') is True})
+        c.execute('UPDATE game SET revision=?,state=? WHERE id=1',(rev+1,json.dumps(g,ensure_ascii=False)))
+    return {'ok':True}

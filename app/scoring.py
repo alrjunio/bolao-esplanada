@@ -21,7 +21,7 @@ def score(p,g):
                 pts-=1 if status else 0
             continue
         on=norm(o.get('person')); op=norm(o.get('party')); os=o.get('status')
-        nh=bool(n and on and n==on); ph=bool(party and op and party==op); sh=bool(status and os and status==os)
+        nh=bool(n and on and (n==on or n in o.get('nameAliases',[]))); ph=bool(party and op and party==op); sh=bool(status and os and status==os)
         if nh: pts+=10;hits+=1
         elif n and on: pts+=2 if any(norm(x.get('person'))==n for x in official) else -2
         if ph: pts+=5;parties+=1

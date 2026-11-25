@@ -1,3 +1,11 @@
 .env
 data/
 __pycache__/
+.env.*
+!.env.example
+*.sqlite*
+*.db
+*.bak
+*.tar.gz
+backups/
+.pytest_cache/
