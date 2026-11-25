@@ -257,12 +257,11 @@ def validate_final(g):
 def ranking(uid=Depends(session)):
     with connect() as c:
         _,g=game(c);g=g or {};a=[]
-        if g.get('locked') or g.get('published') or g.get('publishedExtras'):
-            for nick,bet in c.execute("SELECT nick,bet FROM users WHERE status='active' AND bet IS NOT NULL"):
-                try: a.append(dict(nick=nick,**score(json.loads(bet),g)))
-                except (ValueError,TypeError,KeyError): continue
+        for nick,bet in c.execute("SELECT nick,bet FROM users WHERE status='active' AND bet IS NOT NULL"):
+            try: a.append(dict(nick=nick,**score(json.loads(bet),g)))
+            except (ValueError,TypeError,KeyError): continue
         a.sort(key=lambda p:(-p['pts'],-p['hits'],-p['parties'],p['nick']))
-        return {'ranking':a,'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
+        return {'ranking':a,'participantCount':len(a),'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
 
 @app.get('/api/audit',dependencies=[Depends(admin)])
 def history():
