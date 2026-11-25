@@ -1,0 +1,16 @@
+services:
+  bolao:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8015:8000"
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Configure ADMIN_PASSWORD no .env}
+      INVITE_CODE: ${INVITE_CODE:?Configure INVITE_CODE no .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      DB_PATH: /data/bolao.sqlite3
+    volumes:
+      - bolao_data:/data
+volumes:
+  bolao_data:
