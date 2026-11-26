@@ -265,7 +265,9 @@ def ranking(uid=Depends(session)):
             entry['pts'] = max(0, entry['pts'])
         # Alphabetical ordering is presentation-only and does not resolve ties.
         a.sort(key=lambda p:(-p['pts'],p['nick'].casefold()))
-        return {'ranking':a,'participantCount':len(a),'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
+        # Public ranking contains only nickname and displayed points.
+        public_ranking=[{'nick':entry['nick'],'pts':entry['pts']} for entry in a]
+        return {'ranking':public_ranking,'participantCount':len(a),'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
 
 @app.get('/api/audit',dependencies=[Depends(admin)])
 def history():
