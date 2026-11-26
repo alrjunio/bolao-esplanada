@@ -260,10 +260,11 @@ def ranking(uid=Depends(session)):
         for nick,bet in c.execute("SELECT nick,bet FROM users WHERE status='active' AND bet IS NOT NULL"):
             try: a.append(dict(nick=nick,**score(json.loads(bet),g)))
             except (ValueError,TypeError,KeyError): continue
-        # Keep signed balances for tie-breaking; the public scoreboard never shows negatives.
-        a.sort(key=lambda p:(-p['pts'],-p['hits'],-p['parties'],p['nick']))
+        # Competitively tied displayed scores remain tied: no unapproved tiebreakers.
         for entry in a:
             entry['pts'] = max(0, entry['pts'])
+        # Alphabetical ordering is presentation-only and does not resolve ties.
+        a.sort(key=lambda p:(-p['pts'],p['nick'].casefold()))
         return {'ranking':a,'participantCount':len(a),'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
 
 @app.get('/api/audit',dependencies=[Depends(admin)])
