@@ -16,8 +16,12 @@ class LaunchEditorialTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.old_db = m.DB
         m.DB = Path(self.tmp.name) / "editorial.sqlite3"
-        m.write(m.Update(revision=0, state=dict(reference=["Educação"],
-                                                published=[dict(record("Ana"), source="DOU")])))
+        m.write(m.Update(revision=0, state=dict(reference=["Educação"], official=[])))
+        # Published results are protected by the admin state updater; seed explicitly.
+        with m.connect() as c:
+            state = dict(reference=["Educação"],
+                         published=[dict(record("Ana"), source="DOU")])
+            c.execute("UPDATE game SET state=? WHERE id=1", (json.dumps(state),))
 
     def tearDown(self):
         m.DB = self.old_db
