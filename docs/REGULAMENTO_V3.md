@@ -1,7 +1,7 @@
 # Regulamento — Bolão da Esplanada V3.0 Launch
 
 ## Natureza da competição
-Jogo recreativo, independente e gratuito de previsões sobre a composição ministerial. Não possui vínculo institucional com o Governo Federal. O lema é **Preveja • Compita • Conquiste**.
+Jogo recreativo, independente e gratuito de previsões sobre a composição ministerial da temporada **2027**. Não possui vínculo institucional com o Governo Federal, não envolve apostas financeiras e não oferece premiação em dinheiro. **Participação exclusivamente para maiores de 18 anos.** O lema é **Preveja • Compita • Conquiste**.
 
 ## Participação e registro
 Cada participante utiliza conta individual para cadastrar previsões de pastas ministeriais, titulares, partidos, situação do titular, mudanças estruturais e palpites complementares. O registro precisa ser confirmado pelo servidor antes do bloqueio aplicável. Rascunhos não registrados não pontuam retroativamente.
@@ -39,6 +39,9 @@ Bloqueios progressivos por ministério. Pastas relacionadas podem ser bloqueadas
 
 ## Privacidade, contestações e certificados
 Palpites individuais não são publicados automaticamente. A plataforma divulga estatísticas coletivas; o participante pode compartilhar voluntariamente seus palpites somente após o respectivo bloqueio. Contestação final: até 48 horas da publicação do resultado final. Certificados gratuitos para todos os participantes. Ligas privadas não possuem limite fixo de membros, observada a capacidade técnica e a disponibilização do recurso.
+
+## Atendimento, dados pessoais e retenção
+O responsável pelo tratamento de dados pessoais é **Antonio Lazaro Rodrigues Junior**. Solicitações dos participantes, inclusive de acesso, correção e exclusão ou anonimização de dados quando cabível, podem ser encaminhadas a **antoniolazarorjunior@gmail.com**. A equipe avaliará os pedidos observando a titularidade, os registros da competição e as hipóteses legais de conservação. O prazo geral de retenção dos dados pessoais é de **12 meses após o encerramento da temporada 2027**. Após esse prazo, os dados deverão ser eliminados ou anonimizados, exceto quando houver fundamento legal para conservar. Não há comercialização de dados pessoais. Consulte [Termos de uso e política de privacidade](TERMOS_PRIVACIDADE_V3.md).
 
 ## Especulações
 O Radar da Esplanada é editorial e manual. Suas cotações indicativas não constituem probabilidades oficiais, confirmação de nomeação nem critérios de pontuação.
