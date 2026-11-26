@@ -1,0 +1,35 @@
+name: V3 Launch - isolated tests
+
+on:
+  push:
+    branches:
+      - release/v3.0-launch
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DB_PATH: ${{ runner.temp }}/bolao-v3-test.sqlite3
+      ADMIN_USER: test-admin
+      ADMIN_PASSWORD: test-only-do-not-use
+      INVITE_CODE: test-only-do-not-use
+      COOKIE_SECURE: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test suite
+        run: python -m unittest discover -s tests -v
