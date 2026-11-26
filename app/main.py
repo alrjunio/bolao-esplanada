@@ -83,6 +83,10 @@ async def protect(request,call_next):
 def index():
     return FileResponse(Path(__file__).parent/'static/index.html')
 
+@app.get('/legal')
+def legal():
+    return FileResponse(Path(__file__).parent/'static/legal.html')
+
 @app.post('/api/register')
 def register(body:Login,response:Response,request:Request):
     throttle(request, "register")
@@ -132,8 +136,8 @@ def write(update:Update):
         if old and old.get('final'):
             raise HTTPException(409,'Apuração finalizada')
         if old and old.get('locked') and not state.get('locked'): raise HTTPException(409,'Rodada encerrada não pode ser reaberta')
-        for k in ('published','publishedExtras','lockedPastas','extrasLocked'):
-            state[k]=(old or {}).get(k, [] if k in ('published','lockedPastas') else False if k=='extrasLocked' else {})
+        for k in ('published','publishedExtras','lockedPastas','extrasLocked','radar'):
+            state[k]=(old or {}).get(k, [] if k in ('published','lockedPastas','radar') else False if k=='extrasLocked' else {})
         if state.get('final') and not (old or {}).get('final'):
             validate_final(state); state['locked']=True; state['extrasLocked']=True
         # Participant bets are never overwritten by the administrative snapshot.
@@ -260,8 +264,14 @@ def ranking(uid=Depends(session)):
         for nick,bet in c.execute("SELECT nick,bet FROM users WHERE status='active' AND bet IS NOT NULL"):
             try: a.append(dict(nick=nick,**score(json.loads(bet),g)))
             except (ValueError,TypeError,KeyError): continue
-        a.sort(key=lambda p:(-p['pts'],-p['hits'],-p['parties'],p['nick']))
-        return {'ranking':a,'participantCount':len(a),'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
+        # Competitively tied displayed scores remain tied: no unapproved tiebreakers.
+        for entry in a:
+            entry['pts'] = max(0, entry['pts'])
+        # Alphabetical ordering is presentation-only and does not resolve ties.
+        a.sort(key=lambda p:(-p['pts'],p['nick'].casefold()))
+        # Public ranking contains only nickname and displayed points.
+        public_ranking=[{'nick':entry['nick'],'pts':entry['pts']} for entry in a]
+        return {'ranking':public_ranking,'participantCount':len(a),'published':g.get('published',[]),'locked':bool(g.get('locked') or g.get('published') or g.get('publishedExtras')),'final':g.get('final',False)}
 
 @app.get('/api/audit',dependencies=[Depends(admin)])
 def history():
@@ -395,3 +405,42 @@ def custom_ministries():
                 if k and k not in known:
                     names.setdefault(k,n)
         return [dict(name=names[k],inOfficial=k in official,locked=k in locked) for k in sorted(names)]
+
+@app.get('/api/radar')
+def get_radar():
+    """Only editorial entries; never includes individual participant guesses."""
+    with connect() as c:
+        revision,g=game(c)
+        return {'revision':revision,'entries':(g or {}).get('radar',[])}
+
+@app.post('/api/radar',dependencies=[Depends(admin)])
+def edit_radar(body:dict):
+    """Manual editorial radar, versioned with the existing game state."""
+    with connect() as c:
+        c.execute('BEGIN IMMEDIATE')
+        revision,g=game(c)
+        if g is None or body.get('revision')!=revision:
+            raise HTTPException(409,'Recarregue o Radar antes de alterar')
+        entries=list(g.get('radar',[]))
+        if body.get('action')=='add':
+            name=body.get('ministry'); person=body.get('person'); source=body.get('source')
+            confidence=body.get('confidence')
+            if (not all(isinstance(v,str) and 1<=len(v.strip())<=300 for v in (name,person,source))
+                    or type(confidence) is not int or not 0<=confidence<=100
+                    or len(entries)>=100):
+                raise HTTPException(422,'Informe pasta, nome, fonte e índice entre 0 e 100')
+            entries.append(dict(ministry=name.strip(),person=person.strip(),
+                                source=source.strip(),confidence=confidence,
+                                updatedAt=int(time.time())))
+        elif body.get('action')=='remove':
+            index=body.get('index')
+            if type(index) is not int or not 0<=index<len(entries):
+                raise HTTPException(422,'Registro inválido')
+            entries.pop(index)
+        else:
+            raise HTTPException(422,'Ação inválida')
+        g['radar']=entries
+        audit(c,'radar_'+body['action'],{'count':len(entries)})
+        c.execute('UPDATE game SET revision=?,state=? WHERE id=1',
+                  (revision+1,json.dumps(g,ensure_ascii=False)))
+    return {'revision':revision+1,'entries':entries}

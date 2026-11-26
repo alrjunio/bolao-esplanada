@@ -1,0 +1,19 @@
+version: "2.4"
+services:
+  bolao:
+    build: ../..
+    restart: "no"
+    ports:
+      - "127.0.0.1:8016:8000"
+    env_file: ${STAGING_ENV:?required}
+    environment:
+      DB_PATH: /data/bolao.sqlite3
+      COOKIE_SECURE: "0"
+      FORWARDED_ALLOW_IPS: "127.0.0.1"
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+    volumes:
+      - staging_data:/data
+volumes:
+  staging_data:

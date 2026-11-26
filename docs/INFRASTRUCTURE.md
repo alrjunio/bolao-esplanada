@@ -1,0 +1,2 @@
+# INF-001 / INF-003
+VPS srv1625639: Ubuntu 24.04, 2 vCPU, 7.8 GiB RAM, Docker 29.1.3, Compose 1.29.2. Produção 127.0.0.1:8015, volume bolao-esplanada_bolao_data. Homologação 127.0.0.1:8016, projeto bolao-homologacao, volume staging_data próprio, 0.5 CPU / 512 MiB. Sem dados reais. Acesso por túnel SSH: ssh -N -L 8016:127.0.0.1:8016 junior@HOST. Não publicar porta nem configurar Nginx para staging. Build pode consumir recursos além dos limites do container; acompanhar CPU/RAM. Não executar carga intensiva na VPS compartilhada.
