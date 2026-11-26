@@ -24,3 +24,7 @@ Somente correções funcionais, interface, Radar, pontuação, documentos e prep
 A alteração no frontend exige novo SHA candidato. CHAT 03 deve reexecutar cenários do Radar (índice ausente/0/100/fora da faixa, adição e remoção), navegação mobile, integração dos endpoints, pontuação e persistência. CHAT 02 deve preservar sua revisão independente de infraestrutura.
 
 **Situação:** candidato funcional para testes, não homologado. PR permanece Draft, sem merge nem deploy.
+
+
+## Atualização institucional posterior — GER-016-A (26/11/2026)
+A pendência editorial de identificação do responsável, canal de atendimento e prazo de retenção foi resolvida documentalmente na GER-016-A: **Antonio Lazaro Rodrigues Junior**, **antoniolazarorjunior@gmail.com** e **12 meses após o encerramento da temporada 2027**. A execução operacional do descarte após o prazo e a verificação da elegibilidade de maiores de 18 anos devem ser validadas separadamente; a documentação não declara automação desses processos.
