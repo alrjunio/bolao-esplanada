@@ -83,6 +83,10 @@ async def protect(request,call_next):
 def index():
     return FileResponse(Path(__file__).parent/'static/index.html')
 
+@app.get('/legal')
+def legal():
+    return FileResponse(Path(__file__).parent/'static/legal.html')
+
 @app.post('/api/register')
 def register(body:Login,response:Response,request:Request):
     throttle(request, "register")
