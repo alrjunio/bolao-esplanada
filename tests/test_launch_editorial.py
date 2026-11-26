@@ -57,6 +57,13 @@ class LaunchEditorialTests(unittest.TestCase):
                               person="X", source="Nota", confidence=101))
         self.assertEqual(err.exception.status_code, 422)
 
+    def test_radar_missing_confidence_is_rejected(self):
+        from fastapi import HTTPException
+        with self.assertRaises(HTTPException) as err:
+            m.edit_radar(dict(revision=1, action="add", ministry="Fazenda",
+                              person="X", source="Nota", confidence=None))
+        self.assertEqual(err.exception.status_code, 422)
+
     def test_radar_revision_conflict(self):
         from fastapi import HTTPException
         with self.assertRaises(HTTPException) as err:
