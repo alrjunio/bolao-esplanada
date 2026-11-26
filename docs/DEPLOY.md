@@ -1,0 +1,2 @@
+# Procedimento GER-004
+Deploy de produção não autorizado. Obter branch em clone separado, sem alterar ~/bolao-esplanada. Executar preflight, backup, restore-test, staging up e smoke-test nessa ordem; enviar somente status e contagens autorizadas, nunca credenciais. Backup em ~/bolao-private-backups, fora do Git. Credenciais de staging em ~/bolao-staging-private/staging.env, consultar somente localmente. Testes sintéticos via túnel SSH. Não usar restore-test para alimentar staging. Aguardar homologação CHAT 03 e autorização expressa para produção.
